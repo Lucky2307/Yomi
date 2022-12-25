@@ -18,6 +18,7 @@ import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
     private lateinit var dialog: AlertDialog
+    private var isOverlayActive: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,26 +34,15 @@ class MainActivity : AppCompatActivity() {
 
         var toggleButton = findViewById<Button>(R.id.ToggleButton)
         toggleButton.setOnClickListener {
-            if (!isServiceRunning()) {
-                val intent = Intent(
-                    this,
-                    FloatingActivity::class.java
-                )
-                intent.action = "startFloatingBubble"
-                startService(intent)
-                Log.e("MAIN", "Service started")
-            }
+            val intent = Intent(
+                this,
+                FloatingActivity::class.java
+            )
+            intent.action = "showOverlay"
+            startService(intent)
+            Log.e("MAIN", "Service started")
+            isOverlayActive = true
         }
-    }
-
-    private fun isServiceRunning(): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        for (service in manager.getRunningServices(Int.MAX_VALUE)){
-            if (FloatingActivity::class.java.name == service.service.className){
-                return true
-            }
-        }
-        return false
     }
 
     private fun requestFloatingPermission() {
@@ -73,5 +63,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkFloatingPermission(): Boolean {
         return Settings.canDrawOverlays(this)
+    }
+
+    override fun onBackPressed() {
+        Log.e("DEBUGGING", "Back pressed")
+        if (isOverlayActive) {
+            Log.e("DEBUGGING", "overlay active")
+            val intent = Intent(this, FloatingActivity::class.java)
+            intent.action = "hideOverlay"
+            startService(intent)
+            isOverlayActive = false
+        } else {
+            super.onBackPressed()
+        }
     }
 }

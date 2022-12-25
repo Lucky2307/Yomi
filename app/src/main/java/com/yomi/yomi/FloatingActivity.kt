@@ -17,11 +17,18 @@ class FloatingActivity: Service() {
     private lateinit var floatingBubble: Button
     private var LAYOUT_TYPE: Int? = null
     private lateinit var windowManager: WindowManager
+    private lateinit var removeButton: Button
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
         if (intent == null){
             return START_NOT_STICKY
+        }
+        if (intent.action == "showOverlay"){
+            windowManager.addView(floatButtonView, floatWindowLayoutParams)
+        }
+        if (intent.action == "hideOverlay"){
+            windowManager.removeView(floatButtonView)
         }
         return START_STICKY
     }
@@ -42,11 +49,12 @@ class FloatingActivity: Service() {
         val inflater = baseContext.getSystemService(LAYOUT_INFLATER_SERVICE) as LayoutInflater
 
         floatButtonView = inflater.inflate(R.layout.overlay_bubble, null) as ViewGroup
-
         floatingBubble = floatButtonView.findViewById(R.id.floatingButton)
+        floatingBubble.setOnClickListener {
+            windowManager.removeView(floatButtonView)
+        }
 
-        LAYOUT_TYPE = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-
+        LAYOUT_TYPE = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         floatWindowLayoutParams = WindowManager.LayoutParams(
             width,
             height,
@@ -59,7 +67,6 @@ class FloatingActivity: Service() {
         floatWindowLayoutParams.x = 0
         floatWindowLayoutParams.y = 0
 
-        windowManager.addView(floatButtonView, floatWindowLayoutParams)
     }
 
 
