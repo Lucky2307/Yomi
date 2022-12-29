@@ -1,24 +1,36 @@
 package com.yomi.yomi
 
-import android.app.ActivityManager
+import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.Context
-import android.content.DialogInterface
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.media.Image
+import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Parcel
+import android.os.Parcelable
 import android.provider.Settings
 import android.util.Log
-import android.view.View
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import kotlinx.android.synthetic.main.activity_main.*
+import java.nio.ByteBuffer
 
 
 class MainActivity : AppCompatActivity() {
     private lateinit var dialog: AlertDialog
-    private var isOverlayActive: Boolean = false
+    private lateinit var toggleButton: Button
+    private lateinit var mMediaProjectionManager: MediaProjectionManager
+    private lateinit var mMediaProjection: MediaProjection
+    private lateinit var mImageReader: ImageReader
+    private var REQUEST_CODE = 1
+    private var mResultCode: Int = 0
+    private lateinit var mResultData: Intent
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,16 +44,28 @@ class MainActivity : AppCompatActivity() {
             requestFloatingPermission()
         }
 
-        var toggleButton = findViewById<Button>(R.id.ToggleButton)
+
+        mMediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(mMediaProjectionManager.createScreenCaptureIntent(), REQUEST_CODE)
+
+        toggleButton = findViewById<Button>(R.id.ToggleButton)
         toggleButton.setOnClickListener {
-            val intent = Intent(
-                this,
-                FloatingActivity::class.java
-            )
-            intent.action = "showOverlay"
-            startService(intent)
-            Log.e("MAIN", "Service started")
-            isOverlayActive = true
+            Log.e("DEBUGGING", "Clicked")
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1) {
+            if (resultCode != RESULT_OK) {
+                Log.e("ERROR", "User Cancelled")
+                return
+            }
+            mResultCode = resultCode
+            if (data != null) {
+                mResultData = data
+                launchService()
+            }
         }
     }
 
@@ -65,16 +89,20 @@ class MainActivity : AppCompatActivity() {
         return Settings.canDrawOverlays(this)
     }
 
-    override fun onBackPressed() {
-        Log.e("DEBUGGING", "Back pressed")
-        if (isOverlayActive) {
-            Log.e("DEBUGGING", "overlay active")
-            val intent = Intent(this, FloatingActivity::class.java)
-            intent.action = "hideOverlay"
-            startService(intent)
-            isOverlayActive = false
-        } else {
-            super.onBackPressed()
-        }
+    private fun launchService() {
+        val intent = Intent(
+            this,
+            FloatingActivity::class.java
+        )
+        intent.action = "startBubble"
+        intent.putExtra("data", mResultData)
+        intent.putExtra("code", mResultCode)
+
+        startService(intent)
+
     }
+
+
 }
+
+
