@@ -1,12 +1,10 @@
 package com.yomi.yomi
 
 import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
+import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -28,6 +26,9 @@ import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -37,6 +38,8 @@ class FloatingActivity : Service() {
     private lateinit var selectionOverlayView: ViewGroup
     private lateinit var detailOverlayView: ViewGroup
     private lateinit var detailOverlayTextButtonLayout: ViewGroup
+    private lateinit var detailTextOverlayLayout: ViewGroup
+    private lateinit var overlayFrame: ViewGroup
     private lateinit var flowView: Flow
     private lateinit var floatWindowLayoutParams: WindowManager.LayoutParams
     private lateinit var selectionOverlayLayoutParams: WindowManager.LayoutParams
@@ -70,6 +73,10 @@ class FloatingActivity : Service() {
 
     private var isOverlayActive = false
     private var isDetailOverlayActive = false
+
+    private var hiraKataKana = arrayListOf<String>("あ", "い", "う", "え", "お")
+    private lateinit var mainDB: SQLiteDatabase
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
@@ -195,6 +202,13 @@ class FloatingActivity : Service() {
         if (resourceID > 0) {
             navbarHeight = resources.getDimensionPixelSize(resourceID)
         }
+
+        val databasePath = "/data/data/com.yomi.yomi/databases/" + "DB.db"
+        val databaseFile = File(databasePath)
+        if (!databaseFile.exists()) {
+            copyDataBase()
+        }
+        mainDB = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READONLY)
     }
 
     private fun bubbleClick() {
@@ -317,7 +331,45 @@ class FloatingActivity : Service() {
                     symbolButton.id = View.generateViewId()
                     symbolButton.text = symbol.text
                     symbolButton.setBackgroundColor(Color.parseColor("#FBFBFB"))
-                    val symbolButtonLayoutParams = WindowManager.LayoutParams(100, 100, LAYOUT_TYPE!!, WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT)
+                    val symbolButtonLayoutParams = WindowManager.LayoutParams(
+                        100,
+                        100,
+                        LAYOUT_TYPE!!,
+                        WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                        PixelFormat.TRANSLUCENT
+                    )
+                    symbolButton.setOnClickListener {
+                        val resultEntries = searchDatabase(symbol.text)
+                        initDetailTextOverlay()
+                        if (resultEntries != null) {
+                            for (entry in resultEntries) {
+                                val newTextEntryInfo = TextView(this)
+                                val newTextEntryLayoutParams = ViewGroup.LayoutParams(
+                                    WindowManager.LayoutParams.MATCH_PARENT,
+                                    WindowManager.LayoutParams.WRAP_CONTENT
+                                )
+                                val textString = "${entry.kanji} (${entry.readings})"
+                                newTextEntryInfo.text = textString
+                                detailTextOverlayLayout.addView(newTextEntryInfo, newTextEntryLayoutParams)
+                                val newTextEntryMeanings = TextView(this)
+                                val newTextEntryMeaningsLayoutParams = ViewGroup.LayoutParams(
+                                    WindowManager.LayoutParams.MATCH_PARENT,
+                                    WindowManager.LayoutParams.WRAP_CONTENT
+                                )
+                                val posList = entry.pos.split("￼")
+                                val meaningList = entry.meanings.split("￼")
+                                var textMeaningsString = ""
+                                for (i in posList.indices){
+                                    if (posList[i] != ""){
+                                    textMeaningsString += "[${posList[i]}] "
+                                    }
+                                    textMeaningsString += "${meaningList[i]}; "
+                                }
+                                newTextEntryMeanings.text = textMeaningsString
+                                detailTextOverlayLayout.addView(newTextEntryMeanings, newTextEntryMeaningsLayoutParams)
+                            }
+                        }
+                    }
                     detailOverlayTextButtonLayout.addView(symbolButton, symbolButtonLayoutParams)
 
                     val newReferences = flowView.referencedIds.toMutableList()
@@ -347,13 +399,20 @@ class FloatingActivity : Service() {
             windowManager.removeView(detailOverlayView)
             true
         }
-        val overlayFrame = detailOverlayView.findViewById<ConstraintLayout>(R.id.overlayFrame)
+        overlayFrame = detailOverlayView.findViewById<ConstraintLayout>(R.id.overlayFrame)
         overlayFrame.setOnTouchListener { view, motionEvent ->
             true
         }
         detailOverlayTextButtonLayout = detailOverlayView.findViewById(R.id.textLayout)
         flowView = detailOverlayView.findViewById(R.id.flowView)
-        overlayFrame.findViewById<LinearLayout>(R.id.layoutFrame).setBackgroundResource(R.drawable.detail_overlay_style)
+        overlayFrame.findViewById<LinearLayout>(R.id.layoutFrame)
+            .setBackgroundResource(R.drawable.detail_overlay_style)
+    }
+
+    private fun initDetailTextOverlay() {
+        detailTextOverlayLayout = overlayFrame.findViewById(R.id.textDetailLayout)
+        detailTextOverlayLayout.removeAllViews()
+        return
     }
 
     override fun onDestroy() {
@@ -372,5 +431,51 @@ class FloatingActivity : Service() {
     private fun tempScalerY(input: Int): Int {
         val scale: Float = 1.077F
         return (input * scale).toInt()
+    }
+
+
+    private fun copyDataBase() {
+        //Open your local db as the input stream
+        val myInput = assets.open("DB.db")
+        // Path to the just created empty db
+        val outFileName = "/data/data/com.yomi.yomi/databases/DB.db"
+        //Open the empty db as the output stream
+        val myOutput: OutputStream = FileOutputStream(outFileName)
+        //transfer bytes from the input file to the output file
+        val buffer = ByteArray(1024)
+        var length: Int
+        while (myInput.read(buffer).also { length = it } > 0) {
+            myOutput.write(buffer, 0, length)
+        }
+
+        //Close the streams
+        myOutput.flush()
+        myOutput.close()
+        myInput.close()
+    }
+
+    private fun searchDatabase(input: String): ArrayList<EntryClass>? {
+        val query =
+            "SELECT kanji, meanings, pos, readings FROM entryoptimized WHERE kanji LIKE ? AND priorities LIKE ?"
+        val cursor = mainDB.rawQuery(query, arrayOf("$input%", "ichi1%")) ?: return null
+        var resultArray: ArrayList<EntryClass> = arrayListOf()
+        if (cursor.moveToFirst()) {
+            var count = 0
+            while (!cursor.isAfterLast && count <= 3) {
+                val result = EntryClass()
+                val columnIndexKanji = cursor.getColumnIndex("kanji")
+                result.kanji = cursor.getString(columnIndexKanji)
+                val columnIndexMeanings = cursor.getColumnIndex("meanings")
+                result.meanings = cursor.getString(columnIndexMeanings)
+                val columnIndexPos = cursor.getColumnIndex("pos")
+                result.pos = cursor.getString(columnIndexPos)
+                val columnIndexReadings = cursor.getColumnIndex("readings")
+                result.readings = cursor.getString(columnIndexReadings)
+                resultArray.add(result)
+                count += 1
+                cursor.moveToNext()
+            }
+        }
+        return resultArray
     }
 }
